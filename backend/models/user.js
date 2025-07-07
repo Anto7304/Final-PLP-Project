@@ -21,7 +21,7 @@ const userSchema = new mongoose.Schema({
     // authentication
 
     email:{
-        type: stringify,
+        type: String,
         required: true,
         unique: true,
         lowercase: true,
@@ -37,24 +37,30 @@ const userSchema = new mongoose.Schema({
 
     passwordChangedAt:Date,
     passwordResetToken: String,
-    passwordResetTokenAt: Date,
+    passwordResetExpires: Date,
     
 
     // contact informartion
     phone: {
         type:String,
-        validate: function(v){return /^[+]*[(]{0,1}[0-9]{1,4}[)]{0,1}[-\s\./0-9]*$/.test(v);},
-            message: props=>`${props.value}is not a valid phone number`,
-            trim:true,
+        validate:{ 
+            validator: function(v){
+                return /^[+]*[(]{0,1}[0-9]{1,4}[)]{0,1}[-\s\./0-9]*$/.test(v);
+
+            },
+            message: props=>`${props.value} is not a valid phone number`,
+        },
+        trim: true,
     },
+
 
     address:[{
         ward: String,
-        contituency: true,
-        conty:String,
+        constituency: String,
+        county:String,
         country:{
             type: String,
-            default: Kenya,
+            default: 'Kenya',
         },
         isDefault: {
             type: Boolean,
@@ -65,15 +71,15 @@ const userSchema = new mongoose.Schema({
     // specific field in the ecommerce
 
     wishList:[{
-        type: mongoose.Schema.ObjectId,
+        type: mongoose.Schema.Types.ObjectId,
         ref: 'Product'
     }],
 
     cart:{
         items:[{
             productId:{
-                type: mongoose.Schema.ObjectId,
-                ref: 'Products',
+                type: mongoose.Schema.Types.ObjectId,
+                ref: 'Product',
                 required: true
             },
 
@@ -87,7 +93,7 @@ const userSchema = new mongoose.Schema({
             configuration:{
                 color: String,
                 material: String,
-                dimension: string
+                dimension: String,
             }
         }],
         totalPrice: {
@@ -97,10 +103,10 @@ const userSchema = new mongoose.Schema({
     },
 
 
-    orderHistory: {
-        type: mongoose.Schema.ObjectId,
+    orderHistory:[ {
+        type: mongoose.Schema.Types.ObjectId,
         ref: 'Order'
-    },
+    }],
 
     // Account status
 
@@ -116,7 +122,7 @@ const userSchema = new mongoose.Schema({
     },
 
     role:{
-        type: string,
+        type: String,
         enum: ['user', 'designer','admin'],
         default: 'user'
     },
@@ -135,3 +141,37 @@ const userSchema = new mongoose.Schema({
         toObject:{virtual: true}
     }
 )
+
+//password encryption middleware
+userSchema.pre('save', async function (next){
+    if (!this.isModified('password')) return  next();
+    this.password = await bcrypt.hash(this.password, 12)
+    next();
+});
+
+// upadte password when it is changed or modified
+
+userSchema.pre('save', function (next){
+    if(!this.isModified('password') || this.isNew) return next();
+    this.passwordChangedAt = Date.now()-1000;
+    next();
+});
+
+//instance method to check the password
+
+userSchema.methods.correctPassword = async function(candidatePassword, userPassword){
+    return await bcrypt.compare(candidatePassword, userPassword);
+}
+
+//instance for password reset token 
+ userSchema.methods.createPasswordResetToken = function (){
+    const resetToken = crypto.randomBytes(32).toString('hex');
+    this.passwordResetToken = crypto.createHash('sha256').update(resetToken).digest('hex');
+    this.passwordResetExpires= Date.now()+ 10*60*1000; // expires after 10 minutes
+    return resetToken;
+ }
+
+
+ const User = mongoose.model('User', userSchema);
+
+ module.exports = User;
